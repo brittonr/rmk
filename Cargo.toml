@@ -1,0 +1,31 @@
+[workspace]
+resolver = "2"
+
+members = [
+    "rmk",
+    "rmk-config",
+    "rmk-macro",
+    "rmk-types",
+]
+
+# Examples are standalone projects with their own Cargo.lock
+# They are not part of this workspace
+
+[workspace.package]
+version = "0.8.2"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/haobogu/rmk"
+homepage = "https://github.com/haobogu/rmk"
+
+[workspace.metadata.crane]
+name = "rmk"
+
+[profile.dev]
+opt-level = 1
+
+[profile.release]
+codegen-units = 1
+debug = true
+opt-level = "z"
+lto = "fat"

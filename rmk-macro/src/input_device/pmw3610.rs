@@ -143,8 +143,19 @@ pub(crate) fn expand_pmw3610_device(
         });
 
         // Generate processor initialization
-        let processor_init = quote! {
-            let mut #processor_ident = ::rmk::input_device::pmw3610::Pmw3610Processor::new(&keymap);
+        let processor_init = if let Some(auto_mouse_layer) = sensor.auto_mouse_layer {
+            let timeout_ms = sensor.auto_mouse_timeout_ms;
+            quote! {
+                let mut #processor_ident = ::rmk::input_device::pmw3610::Pmw3610Processor::with_auto_mouse(
+                    &keymap,
+                    #auto_mouse_layer,
+                    #timeout_ms,
+                );
+            }
+        } else {
+            quote! {
+                let mut #processor_ident = ::rmk::input_device::pmw3610::Pmw3610Processor::new(&keymap);
+            }
         };
 
         processor_initializers.push(Initializer {

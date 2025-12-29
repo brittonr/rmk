@@ -1,0 +1,99 @@
+[keyboard]
+name = "Keyball44"
+product_name = "Keyball44"
+vendor_id = 0x4B42
+product_id = 0x4B44
+manufacturer = "HolyKeebs"
+chip = "rp2040"
+
+# Keyball44 layout: 4 rows x 12 cols total (6 per side)
+# 44 keys + trackball on right thumb
+[layout]
+rows = 4
+cols = 12
+layers = 4
+keymap = [
+    # Layer 0: Base QWERTY
+    [
+        # Left side (cols 0-5)                    Right side (cols 6-11)
+        ["Tab",    "Q", "W", "E", "R", "T",       "Y", "U", "I",     "O",   "P",         "Backspace"],
+        ["LCtrl",  "A", "S", "D", "F", "G",       "H", "J", "K",     "L",   "Semicolon", "Quote"],
+        ["LShift", "Z", "X", "C", "V", "B",       "N", "M", "Comma", "Dot", "Slash",     "RShift"],
+        ["_",      "_", "_", "LAlt", "LGui", "Space", "MO(1)", "Enter", "MO(2)", "_", "_", "_"]
+    ],
+    # Layer 1: Lower (numbers and symbols)
+    [
+        ["Escape", "Kc1", "Kc2", "Kc3", "Kc4", "Kc5",    "Kc6",   "Kc7",   "Kc8",          "Kc9",          "Kc0",      "Delete"],
+        ["_",      "_",   "_",   "_",   "_",   "_",      "_",     "_",     "_",            "_",            "_",        "Grave"],
+        ["_",      "_",   "_",   "_",   "_",   "_",      "Minus", "Equal", "LeftBracket",  "RightBracket", "Backslash", "_"],
+        ["_",      "_",   "_",   "_",   "_",   "_",      "_",     "_",     "_",            "_",            "_",         "_"]
+    ],
+    # Layer 2: Raise (navigation and F-keys)
+    [
+        ["_",  "F1", "F2",  "F3",  "F4",  "F5",     "F6",   "F7",       "F8",     "F9",    "F10",  "F11"],
+        ["_",  "_",  "_",   "_",   "_",   "_",      "Left", "Down",     "Up",     "Right", "_",    "F12"],
+        ["_",  "_",  "_",   "_",   "_",   "_",      "Home", "PageDown", "PageUp", "End",   "_",    "_"],
+        ["_",  "_",  "_",   "_",   "_",   "_",      "_",    "_",        "MO(3)",  "_",     "_",    "_"]
+    ],
+    # Layer 3: Auto Mouse Layer (activated when trackball moves)
+    # J = left click, K = right click
+    [
+        ["_", "_", "_", "_", "_", "_",    "_",              "_",               "_",             "_",               "_", "_"],
+        ["_", "_", "_", "_", "_", "_",    "_",              "MouseBtn1",       "MouseBtn2",     "_",               "_", "_"],
+        ["_", "_", "_", "_", "_", "_",    "MouseWheelLeft", "MouseWheelDown",  "MouseWheelUp",  "MouseWheelRight", "_", "_"],
+        ["_", "_", "_", "_", "_", "_",    "MouseBtn1",      "MouseBtn2",       "MouseBtn3",     "_",               "_", "_"]
+    ]
+]
+
+[storage]
+# Clear stored keymap on boot to force using the default keymap with mouse buttons
+clear_storage = true
+
+[split]
+connection = "serial"
+
+# RIGHT SIDE - Central (USB + Trackball)
+# This is where the USB cable connects
+[split.central]
+rows = 4
+cols = 6
+row_offset = 0
+col_offset = 6  # Right side occupies cols 6-11
+
+serial = [{ instance = "PIO0", tx_pin = "PIN_1", rx_pin = "PIN_1" }]
+
+[split.central.matrix]
+matrix_type = "normal"
+row_pins = ["PIN_29", "PIN_28", "PIN_27", "PIN_26"]
+col_pins = ["PIN_9", "PIN_8", "PIN_7", "PIN_6", "PIN_5", "PIN_4"]
+
+# PMW3360 trackball on central (right side)
+[[split.central.input_device.pmw3360]]
+name = "trackball"
+spi.instance = "SPI0"
+spi.sck = "PIN_22"
+spi.mosi = "PIN_23"
+spi.miso = "PIN_20"
+spi.cs = "PIN_21"
+cpi = 1600
+# Rotation angle depends on physical sensor orientation - adjust as needed
+rot_trans_angle = 90
+invert_x = true
+invert_y = false
+# Auto mouse layer - layer 3 activates when trackball moves, deactivates after 650ms of no movement
+auto_mouse_layer = 3
+auto_mouse_timeout_ms = 650
+
+# LEFT SIDE - Peripheral
+[[split.peripheral]]
+rows = 4
+cols = 6
+row_offset = 0
+col_offset = 0  # Left side occupies cols 0-5
+
+serial = [{ instance = "PIO0", tx_pin = "PIN_1", rx_pin = "PIN_1" }]
+
+[split.peripheral.matrix]
+matrix_type = "normal"
+row_pins = ["PIN_29", "PIN_28", "PIN_27", "PIN_26"]
+col_pins = ["PIN_4", "PIN_5", "PIN_6", "PIN_7", "PIN_8", "PIN_9"]

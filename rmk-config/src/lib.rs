@@ -707,6 +707,7 @@ pub struct InputDeviceConfig {
     pub pointing: Option<Vec<PointingDeviceConfig>>,
     pub joystick: Option<Vec<JoystickConfig>>,
     pub pmw3610: Option<Vec<Pmw3610Config>>,
+    pub pmw3360: Option<Vec<Pmw3360Config>>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -754,6 +755,50 @@ pub struct Pmw3610Config {
     /// Enable smart mode for better tracking on shiny surfaces
     #[serde(default)]
     pub smart_mode: bool,
+    /// Auto mouse layer - automatically activate this layer when trackball moves
+    pub auto_mouse_layer: Option<u8>,
+    /// Auto mouse timeout in ms - deactivate layer after this many ms of no movement
+    #[serde(default = "default_auto_mouse_timeout")]
+    pub auto_mouse_timeout_ms: u32,
+}
+
+/// PMW3360 optical mouse sensor configuration (full-duplex SPI)
+#[derive(Clone, Debug, Default, Deserialize)]
+#[allow(unused)]
+#[serde(deny_unknown_fields)]
+pub struct Pmw3360Config {
+    /// Name of the sensor (used for variable naming)
+    pub name: String,
+    /// SPI pins (requires MISO and MOSI for full-duplex, cs is chip select)
+    pub spi: SpiConfig,
+    /// Optional motion interrupt pin
+    pub motion: Option<String>,
+    /// CPI resolution (100-12000, step 100). Optional, uses sensor default if not set.
+    pub cpi: Option<u16>,
+    /// Rotation transform angle (-127 to 127)
+    #[serde(default)]
+    pub rot_trans_angle: i8,
+    /// Liftoff distance
+    #[serde(default)]
+    pub liftoff_dist: u8,
+    /// Invert X axis
+    #[serde(default)]
+    pub invert_x: bool,
+    /// Invert Y axis
+    #[serde(default)]
+    pub invert_y: bool,
+    /// Swap X and Y axes
+    #[serde(default)]
+    pub swap_xy: bool,
+    /// Auto mouse layer - automatically activate this layer when trackball moves
+    pub auto_mouse_layer: Option<u8>,
+    /// Auto mouse timeout in ms - deactivate layer after this many ms of no movement
+    #[serde(default = "default_auto_mouse_timeout")]
+    pub auto_mouse_timeout_ms: u32,
+}
+
+fn default_auto_mouse_timeout() -> u32 {
+    250
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]

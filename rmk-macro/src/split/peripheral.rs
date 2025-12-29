@@ -15,6 +15,7 @@ use crate::gpio_config::expand_output_initialization;
 use crate::import::expand_custom_imports;
 use crate::input_device::adc::expand_adc_device;
 use crate::input_device::encoder::expand_encoder_device;
+use crate::input_device::pmw3360::expand_pmw3360_device;
 use crate::input_device::pmw3610::expand_pmw3610_device;
 use crate::keyboard::get_debouncer_type;
 use crate::keyboard_config::read_keyboard_toml_config;
@@ -405,6 +406,26 @@ pub(crate) fn expand_peripheral_input_device_config(
     };
 
     for initializer in pmw3610_devices {
+        initializations.extend(initializer.initializer);
+        let device_name = initializer.var_name;
+        devices.push(quote! { #device_name });
+    }
+
+    // generate PMW3360 configuration
+    let (pmw3360_devices, _pmw3360_processors) = match &board {
+        BoardConfig::Split(split_config) => expand_pmw3360_device(
+            split_config.peripheral[id]
+                .input_device
+                .clone()
+                .unwrap_or(InputDeviceConfig::default())
+                .pmw3360
+                .unwrap_or(Vec::new()),
+            &chip,
+        ),
+        _ => (vec![], vec![]),
+    };
+
+    for initializer in pmw3360_devices {
         initializations.extend(initializer.initializer);
         let device_name = initializer.var_name;
         devices.push(quote! { #device_name });

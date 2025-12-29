@@ -454,6 +454,10 @@ where
     sensor: Pmw3610<SPI, CS, MOTION>,
     init_state: InitState,
     poll_interval: Duration,
+    /// Last time an event was emitted (for heartbeat/timeout support)
+    last_event_time: Option<embassy_time::Instant>,
+    /// Heartbeat interval - emit zero-motion events periodically for timeout checking
+    heartbeat_interval: Duration,
 }
 
 impl<SPI, CS, MOTION> Pmw3610Device<SPI, CS, MOTION>
@@ -470,6 +474,8 @@ where
             sensor: Pmw3610::new(spi, cs, motion_gpio, config),
             init_state: InitState::Pending,
             poll_interval: Duration::from_micros(500),
+            last_event_time: None,
+            heartbeat_interval: Duration::from_millis(50),
         }
     }
 
@@ -485,6 +491,8 @@ where
             sensor: Pmw3610::new(spi, cs, motion_gpio, config),
             init_state: InitState::Pending,
             poll_interval: Duration::from_micros(poll_interval_us),
+            last_event_time: None,
+            heartbeat_interval: Duration::from_millis(50),
         }
     }
 
@@ -539,13 +547,42 @@ where
                 continue;
             }
 
+            // Check if we need to emit a heartbeat event for timeout checking
+            let need_heartbeat = if let Some(last_time) = self.last_event_time {
+                embassy_time::Instant::now().duration_since(last_time) >= self.heartbeat_interval
+            } else {
+                false
+            };
+
             if !self.sensor.motion_pending() {
+                // No motion pending, but emit heartbeat if needed
+                if need_heartbeat {
+                    self.last_event_time = Some(embassy_time::Instant::now());
+                    return Event::Joystick([
+                        AxisEvent {
+                            typ: AxisValType::Rel,
+                            axis: Axis::X,
+                            value: 0,
+                        },
+                        AxisEvent {
+                            typ: AxisValType::Rel,
+                            axis: Axis::Y,
+                            value: 0,
+                        },
+                        AxisEvent {
+                            typ: AxisValType::Rel,
+                            axis: Axis::Z,
+                            value: 0,
+                        },
+                    ]);
+                }
                 continue;
             }
 
             match self.sensor.read_motion().await {
                 Ok(motion) => {
                     if motion.dx != 0 || motion.dy != 0 {
+                        self.last_event_time = Some(embassy_time::Instant::now());
                         return Event::Joystick([
                             AxisEvent {
                                 typ: AxisValType::Rel,
@@ -573,10 +610,25 @@ where
     }
 }
 
+/// Auto mouse layer configuration
+#[derive(Clone, Copy)]
+pub struct AutoMouseConfig {
+    /// Layer to activate when trackball moves
+    pub layer: u8,
+    /// Timeout in milliseconds before deactivating the layer
+    pub timeout_ms: u32,
+}
+
 /// PMW3610 Processor that converts motion events to mouse reports
 pub struct Pmw3610Processor<'a, const ROW: usize, const COL: usize, const NUM_LAYER: usize, const NUM_ENCODER: usize> {
     /// Reference to the keymap
     keymap: &'a RefCell<KeyMap<'a, ROW, COL, NUM_LAYER, NUM_ENCODER>>,
+    /// Auto mouse layer configuration
+    auto_mouse: Option<AutoMouseConfig>,
+    /// Whether auto mouse layer is currently active
+    auto_mouse_active: bool,
+    /// Last motion timestamp for auto mouse layer timeout
+    last_motion_time: Option<embassy_time::Instant>,
 }
 
 impl<'a, const ROW: usize, const COL: usize, const NUM_LAYER: usize, const NUM_ENCODER: usize>
@@ -584,7 +636,29 @@ impl<'a, const ROW: usize, const COL: usize, const NUM_LAYER: usize, const NUM_E
 {
     /// Create a new PMW3610 processor with default settings
     pub fn new(keymap: &'a RefCell<KeyMap<'a, ROW, COL, NUM_LAYER, NUM_ENCODER>>) -> Self {
-        Self { keymap }
+        Self {
+            keymap,
+            auto_mouse: None,
+            auto_mouse_active: false,
+            last_motion_time: None,
+        }
+    }
+
+    /// Create a new PMW3610 processor with auto mouse layer support
+    pub fn with_auto_mouse(
+        keymap: &'a RefCell<KeyMap<'a, ROW, COL, NUM_LAYER, NUM_ENCODER>>,
+        auto_mouse_layer: u8,
+        auto_mouse_timeout_ms: u32,
+    ) -> Self {
+        Self {
+            keymap,
+            auto_mouse: Some(AutoMouseConfig {
+                layer: auto_mouse_layer,
+                timeout_ms: auto_mouse_timeout_ms,
+            }),
+            auto_mouse_active: false,
+            last_motion_time: None,
+        }
     }
 
     async fn generate_report(&self, x: i16, y: i16) {
@@ -597,12 +671,45 @@ impl<'a, const ROW: usize, const COL: usize, const NUM_LAYER: usize, const NUM_E
         };
         self.send_report(Report::MouseReport(mouse_report)).await;
     }
+
+    /// Check if auto mouse layer should be deactivated due to timeout
+    fn check_auto_mouse_timeout(&mut self) {
+        if let Some(config) = self.auto_mouse {
+            if self.auto_mouse_active {
+                if let Some(last_time) = self.last_motion_time {
+                    let elapsed = embassy_time::Instant::now().duration_since(last_time);
+                    if elapsed.as_millis() as u32 >= config.timeout_ms {
+                        // Deactivate the auto mouse layer
+                        info!("Auto mouse layer {} DEACTIVATING (timeout)", config.layer);
+                        self.keymap.borrow_mut().deactivate_layer(config.layer);
+                        self.auto_mouse_active = false;
+                        self.last_motion_time = None;
+                    }
+                }
+            }
+        }
+    }
+
+    /// Activate auto mouse layer if configured
+    fn activate_auto_mouse(&mut self) {
+        if let Some(config) = self.auto_mouse {
+            if !self.auto_mouse_active {
+                info!("Auto mouse layer {} ACTIVATING", config.layer);
+                self.keymap.borrow_mut().activate_layer(config.layer);
+                self.auto_mouse_active = true;
+            }
+            self.last_motion_time = Some(embassy_time::Instant::now());
+        }
+    }
 }
 
 impl<'a, const ROW: usize, const COL: usize, const NUM_LAYER: usize, const NUM_ENCODER: usize>
     InputProcessor<'a, ROW, COL, NUM_LAYER, NUM_ENCODER> for Pmw3610Processor<'a, ROW, COL, NUM_LAYER, NUM_ENCODER>
 {
     async fn process(&mut self, event: Event) -> ProcessResult {
+        // Always check for auto mouse timeout
+        self.check_auto_mouse_timeout();
+
         match event {
             Event::Joystick(axis_events) => {
                 let mut x = 0i16;
@@ -614,6 +721,11 @@ impl<'a, const ROW: usize, const COL: usize, const NUM_LAYER: usize, const NUM_E
                         Axis::Y => y = axis_event.value,
                         _ => {}
                     }
+                }
+
+                // Activate auto mouse layer when motion is detected
+                if x != 0 || y != 0 {
+                    self.activate_auto_mouse();
                 }
 
                 self.generate_report(x, y).await;
