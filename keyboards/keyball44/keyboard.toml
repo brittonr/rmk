@@ -47,8 +47,14 @@ keymap = [
 ]
 
 [storage]
-# Clear stored keymap on boot to force using the default keymap with mouse buttons
-clear_storage = true
+# Keymap changes via Vial will persist across reboots
+# Set to true only if you want to reset to the default keymap on boot
+clear_storage = false
+
+[host]
+# Vial unlock keys - press these two keys simultaneously to unlock Vial
+# Using Tab (0,0) and Q (0,1) on the left side
+unlock_keys = [[0, 0], [0, 1]]
 
 [split]
 connection = "serial"

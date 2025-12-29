@@ -131,6 +131,9 @@
           cargo-expand
           cargo-make
 
+          # Keyboard configuration
+          vial
+
           # Documentation
           mdbook
         ];
