@@ -10,12 +10,13 @@ use embedded_hal::digital::{InputPin, OutputPin};
 use embedded_hal_async::spi::SpiBus;
 use usbd_hid::descriptor::MouseReport;
 
-use crate::channel::KEYBOARD_REPORT_CHANNEL;
+use crate::channel::{KEYBOARD_REPORT_CHANNEL, POINTING_STATE};
 pub use crate::driver::bitbang_spi::{BitBangError, BitBangSpiBus};
 use crate::event::{Axis, AxisEvent, AxisValType, Event};
 use crate::hid::Report;
 use crate::input_device::{InputDevice, InputProcessor, ProcessResult};
 use crate::keymap::KeyMap;
+use crate::pointing::{PointingConfig, PointingState};
 
 // ============================================================================
 // Page 0 registers
@@ -629,6 +630,10 @@ pub struct Pmw3610Processor<'a, const ROW: usize, const COL: usize, const NUM_LA
     auto_mouse_active: bool,
     /// Last motion timestamp for auto mouse layer timeout
     last_motion_time: Option<embassy_time::Instant>,
+    /// Current pointing device state (scroll mode, CPI level, etc.)
+    pointing_state: PointingState,
+    /// Pointing device configuration
+    pointing_config: PointingConfig,
 }
 
 impl<'a, const ROW: usize, const COL: usize, const NUM_LAYER: usize, const NUM_ENCODER: usize>
@@ -641,6 +646,8 @@ impl<'a, const ROW: usize, const COL: usize, const NUM_LAYER: usize, const NUM_E
             auto_mouse: None,
             auto_mouse_active: false,
             last_motion_time: None,
+            pointing_state: PointingState::new(),
+            pointing_config: PointingConfig::new(),
         }
     }
 
@@ -658,18 +665,140 @@ impl<'a, const ROW: usize, const COL: usize, const NUM_LAYER: usize, const NUM_E
             }),
             auto_mouse_active: false,
             last_motion_time: None,
+            pointing_state: PointingState::new(),
+            pointing_config: PointingConfig::new(),
         }
     }
 
+    /// Create a new PMW3610 processor with pointing configuration
+    pub fn with_pointing_config(
+        keymap: &'a RefCell<KeyMap<'a, ROW, COL, NUM_LAYER, NUM_ENCODER>>,
+        pointing_config: PointingConfig,
+    ) -> Self {
+        let mut state = PointingState::new();
+        state.cpi_level = pointing_config.default_cpi_index;
+        Self {
+            keymap,
+            auto_mouse: None,
+            auto_mouse_active: false,
+            last_motion_time: None,
+            pointing_state: state,
+            pointing_config,
+        }
+    }
+
+    /// Create a new PMW3610 processor with auto mouse layer and pointing configuration
+    pub fn with_auto_mouse_and_pointing_config(
+        keymap: &'a RefCell<KeyMap<'a, ROW, COL, NUM_LAYER, NUM_ENCODER>>,
+        auto_mouse_layer: u8,
+        auto_mouse_timeout_ms: u32,
+        pointing_config: PointingConfig,
+    ) -> Self {
+        let mut state = PointingState::new();
+        state.cpi_level = pointing_config.default_cpi_index;
+        Self {
+            keymap,
+            auto_mouse: Some(AutoMouseConfig {
+                layer: auto_mouse_layer,
+                timeout_ms: auto_mouse_timeout_ms,
+            }),
+            auto_mouse_active: false,
+            last_motion_time: None,
+            pointing_state: state,
+            pointing_config,
+        }
+    }
+
+    /// Generate and send a mouse report with all pointing features applied
     async fn generate_report(&self, x: i16, y: i16) {
-        let mouse_report = MouseReport {
-            buttons: 0,
-            x: x.clamp(i8::MIN as i16, i8::MAX as i16) as i8,
-            y: y.clamp(i8::MIN as i16, i8::MAX as i16) as i8,
-            wheel: 0,
-            pan: 0,
+        let (x, y) = self.apply_pointing_features(x, y);
+
+        let mouse_report = if self.pointing_state.is_scroll_active() {
+            // Scroll mode: convert movement to wheel/pan
+            let divisor = self.pointing_config.scroll_divisor.max(1);
+            MouseReport {
+                buttons: self.get_drag_lock_buttons(),
+                x: 0,
+                y: 0,
+                wheel: (-y / divisor).clamp(i8::MIN as i16, i8::MAX as i16) as i8,
+                pan: (x / divisor).clamp(i8::MIN as i16, i8::MAX as i16) as i8,
+            }
+        } else {
+            // Cursor mode
+            MouseReport {
+                buttons: self.get_drag_lock_buttons(),
+                x: x.clamp(i8::MIN as i16, i8::MAX as i16) as i8,
+                y: y.clamp(i8::MIN as i16, i8::MAX as i16) as i8,
+                wheel: 0,
+                pan: 0,
+            }
         };
         self.send_report(Report::MouseReport(mouse_report)).await;
+    }
+
+    /// Apply all pointing features (CPI scaling, sniper mode, angle snapping)
+    fn apply_pointing_features(&self, mut x: i16, mut y: i16) -> (i16, i16) {
+        // Apply angle snapping first (before scaling)
+        if self.pointing_state.is_angle_snap_active() {
+            (x, y) = self.apply_angle_snap(x, y);
+        }
+
+        // Apply CPI scaling
+        let scale = self.get_cpi_scale();
+        x = (x as i32 * scale as i32 / 100).clamp(i16::MIN as i32, i16::MAX as i32) as i16;
+        y = (y as i32 * scale as i32 / 100).clamp(i16::MIN as i32, i16::MAX as i32) as i16;
+
+        // Apply sniper mode (additional divisor)
+        if self.pointing_state.sniper_mode {
+            let divisor = self.pointing_config.sniper_divisor.max(1);
+            x /= divisor;
+            y /= divisor;
+        }
+
+        (x, y)
+    }
+
+    /// Get CPI scale factor as percentage (100 = 1x, 200 = 2x, etc.)
+    fn get_cpi_scale(&self) -> i16 {
+        let cpi_levels = &self.pointing_config.cpi_levels;
+        let base_cpi = cpi_levels[0].max(1) as i32;
+        let idx = (self.pointing_state.cpi_level as usize).min(cpi_levels.len() - 1);
+        let target_cpi = cpi_levels[idx] as i32;
+        ((target_cpi * 100) / base_cpi) as i16
+    }
+
+    /// Apply angle snapping - lock movement to dominant axis
+    fn apply_angle_snap(&self, x: i16, y: i16) -> (i16, i16) {
+        let abs_x = x.abs() as i32;
+        let abs_y = y.abs() as i32;
+        let ratio = self.pointing_config.angle_snap_ratio.max(1) as i32;
+
+        // If horizontal movement dominates by ratio:1
+        if abs_x > abs_y * ratio {
+            (x, 0)
+        // If vertical movement dominates by ratio:1
+        } else if abs_y > abs_x * ratio {
+            (0, y)
+        } else {
+            // Within threshold, don't snap
+            (x, y)
+        }
+    }
+
+    /// Get button state for drag lock
+    fn get_drag_lock_buttons(&self) -> u8 {
+        if let Some(btn) = self.pointing_state.drag_lock_button {
+            1 << btn
+        } else {
+            0
+        }
+    }
+
+    /// Update pointing state from the signal
+    fn update_pointing_state(&mut self) {
+        if let Some(state) = POINTING_STATE.try_take() {
+            self.pointing_state = state;
+        }
     }
 
     /// Check if auto mouse layer should be deactivated due to timeout
@@ -707,6 +836,9 @@ impl<'a, const ROW: usize, const COL: usize, const NUM_LAYER: usize, const NUM_E
     InputProcessor<'a, ROW, COL, NUM_LAYER, NUM_ENCODER> for Pmw3610Processor<'a, ROW, COL, NUM_LAYER, NUM_ENCODER>
 {
     async fn process(&mut self, event: Event) -> ProcessResult {
+        // Update pointing state from keyboard signal
+        self.update_pointing_state();
+
         // Always check for auto mouse timeout
         self.check_auto_mouse_timeout();
 

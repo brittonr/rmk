@@ -36,12 +36,13 @@ keymap = [
         ["_",  "_",  "_",   "_",   "_",   "_",      "_",    "_",        "MO(3)",  "_",     "_",    "_"]
     ],
     # Layer 3: Auto Mouse Layer (activated when trackball moves)
-    # J = left click, K = right click
+    # J = left click, K = right click, L = scroll toggle
+    # Bottom row: sniper mode, drag lock, CPI controls
     [
-        ["_", "_", "_", "_", "_", "_",    "_",              "_",               "_",             "_",               "_", "_"],
-        ["_", "_", "_", "_", "_", "_",    "_",              "MouseBtn1",       "MouseBtn2",     "_",               "_", "_"],
-        ["_", "_", "_", "_", "_", "_",    "MouseWheelLeft", "MouseWheelDown",  "MouseWheelUp",  "MouseWheelRight", "_", "_"],
-        ["_", "_", "_", "_", "_", "_",    "MouseBtn1",      "MouseBtn2",       "MouseBtn3",     "_",               "_", "_"]
+        ["_", "_", "_", "_", "_", "_",    "cpi_up",         "cpi_down",        "scroll_toggle", "angle_snap_toggle", "_", "_"],
+        ["_", "_", "_", "_", "_", "_",    "_",              "MouseBtn1",       "MouseBtn2",     "MouseBtn3",         "_", "_"],
+        ["_", "_", "_", "_", "_", "_",    "MouseWheelLeft", "MouseWheelDown",  "MouseWheelUp",  "MouseWheelRight",   "_", "_"],
+        ["_", "_", "_", "_", "_", "_",    "sniper",         "drag_lock",       "cpi_cycle",     "_",                 "_", "_"]
     ]
 ]
 
@@ -75,14 +76,14 @@ spi.sck = "PIN_22"
 spi.mosi = "PIN_23"
 spi.miso = "PIN_20"
 spi.cs = "PIN_21"
-cpi = 1600
+cpi = 1000
 # Rotation angle depends on physical sensor orientation - adjust as needed
 rot_trans_angle = 90
 invert_x = true
 invert_y = false
 # Auto mouse layer - layer 3 activates when trackball moves, deactivates after 650ms of no movement
 auto_mouse_layer = 3
-auto_mouse_timeout_ms = 650
+auto_mouse_timeout_ms = 1000
 
 # LEFT SIDE - Peripheral
 [[split.peripheral]]

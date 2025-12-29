@@ -860,6 +860,25 @@ pub enum KeyCode {
     User29 = 0x85D,
     User30 = 0x85E,
     User31 = 0x85F,
+    // Pointing device keycodes, use 0x900 ~ 0x90F
+    /// Toggle scroll mode (trackball controls scroll instead of cursor)
+    PointingScrollToggle = 0x900,
+    /// Momentary scroll mode (hold to scroll, release to return to cursor)
+    PointingScrollMomentary = 0x901,
+    /// Increase CPI level
+    PointingCpiUp = 0x902,
+    /// Decrease CPI level
+    PointingCpiDown = 0x903,
+    /// Cycle through CPI presets
+    PointingCpiCycle = 0x904,
+    /// Toggle drag lock
+    PointingDragLock = 0x905,
+    /// Sniper mode (momentary low CPI)
+    PointingSniper = 0x906,
+    /// Toggle angle snapping
+    PointingAngleSnapToggle = 0x907,
+    /// Momentary angle snapping
+    PointingAngleSnapMomentary = 0x908,
 }
 
 // Manual Serialize/Deserialize implementation to avoid derive macro overhead
@@ -1013,6 +1032,11 @@ impl KeyCode {
     /// Returns `true` if the keycode is a user keycode
     pub fn is_user(self) -> bool {
         KeyCode::User0 <= self && self <= KeyCode::User31
+    }
+
+    /// Returns `true` if the keycode is a pointing device keycode
+    pub fn is_pointing(self) -> bool {
+        KeyCode::PointingScrollToggle <= self && self <= KeyCode::PointingAngleSnapMomentary
     }
 
     /// Convert a keycode to macro number

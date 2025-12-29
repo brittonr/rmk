@@ -244,6 +244,63 @@ pub static KEYCODE_ALIAS: Lazy<HashMap<&str, &str>> = Lazy::new(|| {
         "mouse_acceleration_2",
         "ms_acl2"
     );
+
+    // Pointing device keycodes
+    add_alias!(
+        "PointingScrollToggle" = "pointing_scroll_toggle",
+        "scroll_toggle",
+        "scrl_tog",
+        "pt_scrl"
+    );
+    add_alias!(
+        "PointingScrollMomentary" = "pointing_scroll_momentary",
+        "scroll_momentary",
+        "scrl_mo",
+        "pt_scrl_mo"
+    );
+    add_alias!(
+        "PointingCpiUp" = "pointing_cpi_up",
+        "cpi_up",
+        "dpi_up",
+        "pt_cpi_up"
+    );
+    add_alias!(
+        "PointingCpiDown" = "pointing_cpi_down",
+        "cpi_down",
+        "dpi_down",
+        "pt_cpi_dn"
+    );
+    add_alias!(
+        "PointingCpiCycle" = "pointing_cpi_cycle",
+        "cpi_cycle",
+        "dpi_cycle",
+        "pt_cpi_cyc"
+    );
+    add_alias!(
+        "PointingDragLock" = "pointing_drag_lock",
+        "drag_lock",
+        "drg_lck",
+        "pt_drag"
+    );
+    add_alias!(
+        "PointingSniper" = "pointing_sniper",
+        "sniper",
+        "snp",
+        "pt_snp"
+    );
+    add_alias!(
+        "PointingAngleSnapToggle" = "pointing_angle_snap_toggle",
+        "angle_snap_toggle",
+        "asnap_tog",
+        "pt_asnap"
+    );
+    add_alias!(
+        "PointingAngleSnapMomentary" = "pointing_angle_snap_momentary",
+        "angle_snap_momentary",
+        "asnap_mo",
+        "pt_asnap_mo"
+    );
+
     add_alias!("LCtrl" = "l_ctrl", "leftctrl", "left_ctrl", "lctl");
     add_alias!("LShift" = "l_shift", "leftshift", "left_shift", "lsft");
     add_alias!("LAlt" = "l_alt", "leftalt", "left_alt", "lopt");

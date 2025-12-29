@@ -3,9 +3,12 @@
 use embassy_sync::channel::Channel;
 #[cfg(any(feature = "split", feature = "controller"))]
 use embassy_sync::pubsub::PubSubChannel;
+use embassy_sync::signal::Signal;
 pub use embassy_sync::{blocking_mutex, channel, pubsub, zerocopy_channel};
 #[cfg(feature = "_ble")]
-use {crate::ble::profile::BleProfileAction, embassy_sync::signal::Signal, rmk_types::led_indicator::LedIndicator};
+use {crate::ble::profile::BleProfileAction, rmk_types::led_indicator::LedIndicator};
+
+use crate::pointing::PointingState;
 #[cfg(feature = "controller")]
 use {
     crate::event::ControllerEvent,
@@ -62,6 +65,9 @@ pub static KEY_EVENT_CHANNEL: Channel<RawMutex, KeyboardEvent, EVENT_CHANNEL_SIZ
 pub static EVENT_CHANNEL: Channel<RawMutex, Event, EVENT_CHANNEL_SIZE> = Channel::new();
 /// Channel for keyboard report from input processors to hid writer/reader
 pub static KEYBOARD_REPORT_CHANNEL: Channel<RawMutex, Report, REPORT_CHANNEL_SIZE> = Channel::new();
+/// Signal for pointing device state (scroll mode, CPI level, etc.)
+/// Used to communicate from keyboard (keycode handling) to pointing device processor
+pub static POINTING_STATE: Signal<RawMutex, PointingState> = Signal::new();
 /// Channel for controller events
 #[cfg(feature = "controller")]
 pub static CONTROLLER_CHANNEL: PubSubChannel<

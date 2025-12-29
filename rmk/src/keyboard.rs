@@ -19,7 +19,8 @@ use {
     crate::event::ControllerEvent,
 };
 
-use crate::channel::{KEY_EVENT_CHANNEL, KEYBOARD_REPORT_CHANNEL};
+use crate::channel::{KEY_EVENT_CHANNEL, KEYBOARD_REPORT_CHANNEL, POINTING_STATE};
+use crate::pointing::PointingState;
 use crate::combo::Combo;
 use crate::config::Hand;
 use crate::descriptor::KeyboardReport;
@@ -247,6 +248,9 @@ pub struct Keyboard<'a, const ROW: usize, const COL: usize, const NUM_LAYER: usi
     /// Used for temporarily disabling combos
     combo_on: bool,
 
+    /// Pointing device state (scroll mode, CPI, etc.)
+    pointing_state: PointingState,
+
     /// Publisher for controller channel
     #[cfg(feature = "controller")]
     controller_pub: ControllerPub,
@@ -288,6 +292,7 @@ impl<'a, const ROW: usize, const COL: usize, const NUM_LAYER: usize, const NUM_E
             mouse_repeat: 0,
             mouse_wheel_repeat: 0,
             combo_on: true,
+            pointing_state: PointingState::new(),
             #[cfg(feature = "controller")]
             controller_pub: unwrap!(CONTROLLER_CHANNEL.publisher()),
         }
@@ -1462,6 +1467,8 @@ impl<'a, const ROW: usize, const COL: usize, const NUM_LAYER: usize, const NUM_E
             self.process_action_system_control(key, event).await;
         } else if key.is_mouse_key() {
             self.process_action_mouse(key, event).await;
+        } else if key.is_pointing() {
+            self.process_action_pointing(key, event).await;
         } else if key.is_basic() {
             self.process_basic(key, event).await;
         } else if key.is_user() {
@@ -1826,6 +1833,89 @@ impl<'a, const ROW: usize, const COL: usize, const NUM_LAYER: usize, const NUM_E
                 _ => (), // unreachable, do nothing
             };
         }
+    }
+
+    /// Process pointing device keycodes (scroll mode, CPI switching, etc.)
+    async fn process_action_pointing(&mut self, key: KeyCode, event: KeyboardEvent) {
+        match key {
+            KeyCode::PointingScrollToggle => {
+                if event.pressed {
+                    self.pointing_state.scroll_mode = !self.pointing_state.scroll_mode;
+                    self.signal_pointing_state();
+                }
+            }
+            KeyCode::PointingScrollMomentary => {
+                self.pointing_state.scroll_momentary = event.pressed;
+                self.signal_pointing_state();
+            }
+            KeyCode::PointingCpiUp => {
+                if event.pressed {
+                    self.pointing_state.cpi_level = (self.pointing_state.cpi_level + 1) % 4;
+                    self.signal_pointing_state();
+                }
+            }
+            KeyCode::PointingCpiDown => {
+                if event.pressed {
+                    self.pointing_state.cpi_level = if self.pointing_state.cpi_level == 0 {
+                        3
+                    } else {
+                        self.pointing_state.cpi_level - 1
+                    };
+                    self.signal_pointing_state();
+                }
+            }
+            KeyCode::PointingCpiCycle => {
+                if event.pressed {
+                    self.pointing_state.cpi_level = (self.pointing_state.cpi_level + 1) % 4;
+                    self.signal_pointing_state();
+                }
+            }
+            KeyCode::PointingDragLock => {
+                if event.pressed {
+                    // Toggle drag lock on the first pressed mouse button
+                    if self.pointing_state.drag_lock_button.is_some() {
+                        self.pointing_state.drag_lock_button = None;
+                    } else {
+                        // Find currently pressed button from mouse_report
+                        let buttons = MouseButtons::from_bits(self.mouse_report.buttons);
+                        if buttons.button1() {
+                            self.pointing_state.drag_lock_button = Some(0);
+                        } else if buttons.button2() {
+                            self.pointing_state.drag_lock_button = Some(1);
+                        } else if buttons.button3() {
+                            self.pointing_state.drag_lock_button = Some(2);
+                        }
+                        // Default to button 1 if no button is pressed
+                        if self.pointing_state.drag_lock_button.is_none() {
+                            self.pointing_state.drag_lock_button = Some(0);
+                        }
+                    }
+                    self.signal_pointing_state();
+                }
+            }
+            KeyCode::PointingSniper => {
+                self.pointing_state.sniper_mode = event.pressed;
+                self.signal_pointing_state();
+            }
+            KeyCode::PointingAngleSnapToggle => {
+                if event.pressed {
+                    self.pointing_state.angle_snap = !self.pointing_state.angle_snap;
+                    self.signal_pointing_state();
+                }
+            }
+            KeyCode::PointingAngleSnapMomentary => {
+                self.pointing_state.angle_snap_momentary = event.pressed;
+                self.signal_pointing_state();
+            }
+            _ => {
+                warn!("Unsupported pointing key: {:?}", key);
+            }
+        }
+    }
+
+    /// Signal the pointing state to the pointing device processor
+    fn signal_pointing_state(&self) {
+        POINTING_STATE.signal(self.pointing_state);
     }
 
     async fn process_action_macro(&mut self, key: KeyCode, event: KeyboardEvent) {
